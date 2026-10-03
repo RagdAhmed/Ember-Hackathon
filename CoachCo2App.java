@@ -22,7 +22,7 @@ public class CoachCo2App {
 final class Config {
     static final double SAVED_KG_PER_KM = 0.248;   // coach vs car, kg CO2 saved per km
     static final boolean REAL_TIME = false;        // false: replay a journey in DEMO_SECONDS; true: run it in real time
-    static final int DEMO_SECONDS = 30;            // real seconds the replayed journey takes (when REAL_TIME is false)
+    static final int DEMO_SECONDS = 35;            // real seconds the replayed journey takes (when REAL_TIME is false)
     static final double ROAD_FACTOR = 1.15;        // road distance ~ straight-line distance x this (API gives no distance)
     static final double FULL_TREE_KG = 18.6;       // kg that makes one fully grown tree
     static final int FOREST_GRID = 4;              // forest plot is GRID x GRID tiles (max trees = GRID^2)
