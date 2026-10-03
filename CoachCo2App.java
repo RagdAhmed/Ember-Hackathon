@@ -235,24 +235,12 @@ class BackButton extends JButton {
     }
 }
 
-/** Hamburger menu (top-left of the timer page). */
+/** Hamburger button (top-left of the timer page) - opens the side menu. */
 class MenuButton extends JButton {
-    MenuButton(Consumer<String> nav) {
+    MenuButton(Runnable openMenu) {
         Ui.plainButton(this, 56, 44);
         setToolTipText("Menu");
-        JPopupMenu pm = new JPopupMenu();
-        pm.setBackground(Color.WHITE);
-        pm.setBorder(BorderFactory.createLineBorder(Ui.MIST, 1));
-        for (String[] item : new String[][]{{"🚌  Choose journey", "journey"}, {"🌲  Forest", "forest"}, {"🏅  Badges", "badges"}, {"🚪  Log out", "logout"}}) {
-            JMenuItem mi = new JMenuItem(item[0]);
-            mi.setFont(Ui.font(Font.PLAIN, 16));
-            mi.setForeground(Ui.INK);
-            mi.setBackground(Color.WHITE);
-            mi.setBorder(BorderFactory.createEmptyBorder(9, 16, 9, 28));
-            mi.addActionListener(e -> nav.accept(item[1]));
-            pm.add(mi);
-        }
-        addActionListener(e -> pm.show(this, 0, getHeight()));
+        addActionListener(e -> openMenu.run());
     }
     protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0.create();
@@ -647,7 +635,8 @@ final class AppFrame extends JFrame {
     private final JourneyTracker tracker = new MockJourneyTracker();   // <- swap for real API implementation
     private Journey journey;                                  // null until the user picks one
     private final Garden garden = new Garden();
-    private final TimerPage timerPage = new TimerPage(garden, journey, this::go, this::toggleJourney);
+    private final SideMenu sideMenu = new SideMenu(garden, this::go);
+    private final TimerPage timerPage = new TimerPage(garden, journey, sideMenu::open, this::toggleJourney);
     private final ForestPage forestPage = new ForestPage(garden, this::go);
     private final BadgesPage badgesPage = new BadgesPage(garden, this::go);
     private boolean running;
@@ -663,6 +652,7 @@ final class AppFrame extends JFrame {
         root.add(forestPage, "forest");
         root.add(badgesPage, "badges");
         setContentPane(root);
+        setGlassPane(sideMenu);                               // the slide-in menu lives on the glass pane
         setSize(1200, 780);
         setMinimumSize(new Dimension(1000, 720));
         setLocationRelativeTo(null);
@@ -694,6 +684,7 @@ final class AppFrame extends JFrame {
         journey = null;
         timerPage.clearJourney();
         timerPage.setUser(name);
+        sideMenu.setUser(name);
         badgesPage.refresh();
         cards.show(root, "timer");
     }

@@ -16,7 +16,7 @@ final class TimerPage extends SkyPanel {
     private final JLabel userLabel = Ui.label(" ", 13, Font.BOLD, Ui.TEAL_DARK);
     private final PillButton button = new PillButton("SELECT JOURNEY", Ui.TEAL, 340);
 
-    TimerPage(Garden garden, Journey j, Consumer<String> nav, Runnable onToggle) {
+    TimerPage(Garden garden, Journey j, Runnable openMenu, Runnable onToggle) {
         this.journey = j;
         tree = new TreeCanvas(garden, 260);
         setLayout(new BorderLayout());
@@ -28,7 +28,7 @@ final class TimerPage extends SkyPanel {
         JPanel menu = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));    // same width as the right side so the title stays centred
         menu.setOpaque(false);
         menu.setPreferredSize(new Dimension(150, 44));
-        menu.add(new MenuButton(nav));
+        menu.add(new MenuButton(openMenu));
         top.add(menu, BorderLayout.WEST);
         JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
         title.setFont(Ui.font(Font.BOLD, 17));
