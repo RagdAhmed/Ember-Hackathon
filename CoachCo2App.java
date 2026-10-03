@@ -1,6 +1,4 @@
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.geom.*;
 import java.util.*;
 import java.util.List;
@@ -497,6 +495,7 @@ class TreeCanvas extends JComponent {
         g.setFont(Ui.font(Font.BOLD, 17));
         g.setColor(Ui.INK);
         Ui.drawCentered(g, String.format("%.1f kg CO₂", shownKg), w / 2.0, oy + d * 0.15);
+        Ui.drawCentered(g, "saved", w / 2.0, oy + d * 0.15 + 20);
 
         g.setStroke(new BasicStroke(4f));
         g.setColor(Ui.INK);
