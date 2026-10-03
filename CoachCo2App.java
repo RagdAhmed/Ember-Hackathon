@@ -32,11 +32,11 @@ final class Config {
     static final String[] STAGE_NAME = {"Seed", "Sprout", "Young tree", "Mature tree", "Large tree"};
     static final List<Badge> BADGES = List.of(
         new Badge("🌱", "First Sprout", "First CO₂ saved", 0.01),
-        new Badge("🌿", "Growing Green", "5 kg CO₂ saved", 5),
-        new Badge("🌳", "Tree Planter", "10 kg CO₂ saved", 10),
-        new Badge("🌲", "Forest Builder", "25 kg CO₂ saved", 25),
-        new Badge("🌍", "Planet Protector", "50 kg CO₂ saved", 50),
-        new Badge("🏆", "Forest Guardian", "100 kg CO₂ saved", 100));
+        new Badge("🌿", "Growing Green", "10 kg CO₂ saved", 10),
+        new Badge("🌳", "Tree Planter", "50 kg CO₂ saved", 50),
+        new Badge("🌲", "Forest Builder", "100 kg CO₂ saved", 100),
+        new Badge("🌍", "Planet Protector", "150 kg CO₂ saved", 150),
+        new Badge("🏆", "Forest Guardian", "250 kg CO₂ saved", 250));
 
     static int journeySeconds(Journey j) { return REAL_TIME ? j.durationMin() * 60 : DEMO_SECONDS; }
 
