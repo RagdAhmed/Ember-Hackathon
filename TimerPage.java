@@ -2,7 +2,6 @@ import java.awt.*;
 import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.*;
-import javax.swing.Timer;
 
 /** Page 3 of the sketch (shown first): menu, tree in a circle, 00:00 timer, START JOURNEY. */
 final class TimerPage extends SkyPanel {
@@ -25,8 +24,8 @@ final class TimerPage extends SkyPanel {
         top.setOpaque(false);
         top.setBorder(BorderFactory.createEmptyBorder(16, 20, 4, 20));
         top.add(new MenuButton(nav), BorderLayout.WEST);
-        JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
-        title.setFont(Ui.font(Font.BOLD, 17));
+        JLabel title = new JLabel("Travel Tree", SwingConstants.CENTER);
+        title.setFont(Ui.font(Font.BOLD, 30));
         title.setForeground(Ui.MUTED);
         top.add(title, BorderLayout.CENTER);
         top.add(Box.createRigidArea(new Dimension(56, 44)), BorderLayout.EAST);

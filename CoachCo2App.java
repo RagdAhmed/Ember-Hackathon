@@ -1,6 +1,4 @@
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.geom.*;
 import java.util.*;
 import java.util.List;
@@ -638,7 +636,7 @@ final class AppFrame extends JFrame {
     private boolean running;
 
     AppFrame() {
-        super("Coach CO₂ Tracker");
+        super("Travel Tree");
         root.add(timerPage, "timer");
         root.add(forestPage, "forest");
         root.add(badgesPage, "badges");
