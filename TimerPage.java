@@ -6,7 +6,7 @@ import javax.swing.Timer;
 
 /** Page 3 of the sketch (shown first): menu, tree in a circle, 00:00 timer, START JOURNEY. */
 final class TimerPage extends SkyPanel {
-    private final Journey journey;
+    private Journey journey;
     private final TreeCanvas tree;
     private final JLabel stage = Ui.label("Seed", 15, Font.BOLD, Ui.TEAL_DARK);
     private final BigTime timer = new BigTime();
@@ -74,6 +74,14 @@ final class TimerPage extends SkyPanel {
     void setRunning(boolean running) {
         button.setText(running ? "I'VE GOT OFF THE COACH" : "START JOURNEY");
         button.setColor(running ? Ui.INK : Ui.TEAL);
+    }
+
+    /** Switch to a different (real) journey picked from the API. */
+    void setJourney(Journey j) {
+        journey = j;
+        resetStats();
+        toast.clear();
+        toast.show("🚌 Journey set: " + j.from() + " → " + j.to());
     }
 
     void begin(Journey j) {
