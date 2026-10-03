@@ -31,6 +31,7 @@ final class ProfilePage extends SkyPanel {
     private final JLabel badgeCount = Ui.label(" ", 13, Font.BOLD, Ui.TEAL_DARK);
     private final JLabel status = Ui.label(" ", 13, Font.BOLD, Ui.MUTED);
     private final PillButton action = new PillButton("EDIT BIO", Ui.TEAL, 280);
+    private final JButton backLink = new JButton("←  Back to friends");
 
     private String viewing, back = "timer", shownBio = "";
     private boolean self, friend;
@@ -41,12 +42,13 @@ final class ProfilePage extends SkyPanel {
         this.nav = nav;
         this.me = me;
         setLayout(new BorderLayout());
+        canvas.setOnMapChange((m, current) -> setTheme(m.skyTop(), m.skyBottom()));
 
-        // top bar: back arrow + title
+        // top bar: menu button + title
         JPanel bar = new JPanel(new BorderLayout());
         bar.setOpaque(false);
         bar.setBorder(BorderFactory.createEmptyBorder(16, 20, 4, 20));
-        bar.add(new BackButton(() -> nav.accept(back)), BorderLayout.WEST);
+        bar.add(new MenuButton(() -> nav.accept("menu")), BorderLayout.WEST);
         title.setFont(Ui.display(Font.BOLD, 38));
         title.setForeground(Ui.INK);
         bar.add(title, BorderLayout.CENTER);
@@ -92,6 +94,14 @@ final class ProfilePage extends SkyPanel {
         card.setOpaque(false);
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setBorder(BorderFactory.createEmptyBorder(22, 16, 18, 16));
+        backLink.setFont(Ui.font(Font.BOLD, 13));
+        backLink.setForeground(Ui.TEAL_DARK);
+        Ui.plainButton(backLink, 200, 26);
+        backLink.setAlignmentX(0.5f);
+        backLink.setMaximumSize(new Dimension(200, 26));
+        backLink.addActionListener(e -> nav.accept(back));
+        card.add(backLink);
+        card.add(Ui.gap(4));
         card.add(avatar);
         card.add(Ui.gap(10));
         card.add(name);
@@ -144,11 +154,11 @@ final class ProfilePage extends SkyPanel {
         self = p.self();
         friend = p.friend();
         garden.load(p.bankedKg(), p.mapIndex());
-        ForestMap m = garden.map();
-        setTheme(m.skyTop(), m.skyBottom());
         canvas.setBannerText(self ? "🎉  You saved the forest!" : "🎉  " + p.username() + " saved the forest!");
+        canvas.showCurrent();                                  // re-tints the page and starts on their current forest
 
         title.setText(self ? "MY PROFILE" : "PROFILE");
+        backLink.setVisible(!self && back.equals("friends"));
         avatar.setInitialOf(p.username());
         name.setText(p.username());
         joined.setText(p.joined().isEmpty() ? " " : "Joined " + p.joined());

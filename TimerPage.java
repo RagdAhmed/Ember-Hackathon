@@ -30,7 +30,7 @@ final class TimerPage extends SkyPanel {
         menu.setPreferredSize(new Dimension(150, 44));
         menu.add(new MenuButton(openMenu));
         top.add(menu, BorderLayout.WEST);
-        JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
+        JLabel title = new JLabel("Travel Tree", SwingConstants.CENTER);
         title.setFont(Ui.font(Font.BOLD, 17));
         title.setForeground(Ui.MUTED);
         top.add(title, BorderLayout.CENTER);

@@ -26,7 +26,7 @@ final class LoginPage extends SkyPanel {
         col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
 
         JLabel logo = Ui.label("🌳", 54, Font.PLAIN, Ui.INK);
-        JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
+        JLabel title = new JLabel("Travel Tree", SwingConstants.CENTER);
         title.setFont(Ui.display(Font.BOLD, 38));
         title.setForeground(Ui.INK);
         title.setAlignmentX(0.5f);

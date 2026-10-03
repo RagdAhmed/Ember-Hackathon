@@ -2,6 +2,7 @@ import java.awt.*;
 import java.awt.geom.*;
 import java.util.*;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.swing.*;
 import javax.swing.Timer;
@@ -34,10 +35,13 @@ final class Config {
     /** Maps are played in order and loop. Add another ForestMap here to add a map. */
     static final List<ForestMap> MAPS = List.of(
         new ForestMap("Meadow Forest", "🌲", Ui.PALE, new Color(0xEEF5F2), Ui.SOFT, new Color(0x97BDAF),
-            Ui.SOIL_L, Ui.SOIL_R, Ui.TRUNK, new Color[]{Ui.TEAL_DARK, Ui.TEAL_MID, Ui.TEAL}, Ui.INK, Ui.TEAL_DARK, false),
+            Ui.SOIL_L, Ui.SOIL_R, Ui.TRUNK, new Color[]{Ui.TEAL_DARK, Ui.TEAL_MID, Ui.TEAL}, Ui.INK, Ui.TEAL_DARK, false, false),
         new ForestMap("Halloween Forest", "🎃", new Color(0xFFDDB8), new Color(0xCDB6E6), new Color(0x6E5A8E), new Color(0x604E80),
             new Color(0x4A3340), new Color(0x372531), new Color(0x2E2230),
-            new Color[]{new Color(0x2A1F3D), new Color(0x3F2D5C), new Color(0x5A3F7D)}, new Color(0x2A1F3D), new Color(0xD9680F), true));
+            new Color[]{new Color(0x2A1F3D), new Color(0x3F2D5C), new Color(0x5A3F7D)}, new Color(0x2A1F3D), new Color(0xD9680F), true, false),
+        new ForestMap("Winter Forest", "❄️", new Color(0xC6E0F2), new Color(0xF3F8FC), new Color(0xF4F8FC), new Color(0xDCE8F3),
+            new Color(0x66768A), new Color(0x4C5A6E), new Color(0x5A4636),
+            new Color[]{new Color(0x2B5A4C), new Color(0x38705D), new Color(0x4A8A73)}, new Color(0x3E4E5E), new Color(0x3A7CA5), false, true));
     static final List<Badge> BADGES = List.of(
         new Badge("🌱", "First Sprout", "First CO₂ saved", 0.01),
         new Badge("🌿", "Growing Green", "10 kg CO₂ saved", 10),
@@ -60,9 +64,9 @@ final class Config {
 /* ===================== DATA / TRACKING LAYER ===================== */
 record Journey(String from, String to, double distanceKm, int durationMin) {}
 record Badge(String icon, String name, String desc, double kg) {}
-/** Look of one forest map (colours + whether it gets the spooky extras). */
+/** Look of one forest map (colours + whether it gets the spooky or snowy extras). */
 record ForestMap(String name, String icon, Color skyTop, Color skyBottom, Color grassA, Color grassB,
-                 Color soilL, Color soilR, Color trunk, Color[] foliage, Color outline, Color accent, boolean spooky) {}
+                 Color soilL, Color soilR, Color trunk, Color[] foliage, Color outline, Color accent, boolean spooky, boolean snowy) {}
 record Snapshot(double progress, double distanceKm, double totalKm, double co2Kg, int elapsedSec) {
     double remainingKm() { return Math.max(0, totalKm - distanceKm); }
 }
@@ -205,12 +209,12 @@ final class Ui {
         b.setPreferredSize(new Dimension(w, h));
     }
 
-    /** Top bar used by the Forest and Badges pages:  <-  TITLE  (title optional). */
+    /** Top bar used by the Forest, Badges and Friends pages:  menu button  TITLE  (title optional). nav("menu") opens the drawer. */
     static JPanel topBar(String title, Consumer<String> nav) {
         JPanel bar = new JPanel(new BorderLayout());
         bar.setOpaque(false);
         bar.setBorder(BorderFactory.createEmptyBorder(16, 20, 4, 20));
-        bar.add(new BackButton(() -> nav.accept("timer")), BorderLayout.WEST);
+        bar.add(new MenuButton(() -> nav.accept("menu")), BorderLayout.WEST);
         if (title != null) {
             JLabel l = new JLabel(title, SwingConstants.CENTER);
             l.setFont(display(Font.BOLD, 38));
@@ -553,26 +557,143 @@ class ForestCanvas extends JComponent {
     private double shown, banner;
     private int shownMap;
     private String bannerText = "🎉  Congrats! You saved the forest!";
+    private int view = -1;                                   // which forest is on screen; -1 = follow the current one
+    private boolean preview;                                 // may the locked next map be browsed?
+    private double lockAmt;                                  // 0..1, eased so the veil and lock fade in
+    private BiConsumer<ForestMap, Boolean> onMapChange;      // (map now showing, is it the current one?)
+    private final Rectangle prevBox = new Rectangle(), nextBox = new Rectangle();
+    private int hover;                                       // -1 prev arrow, 1 next arrow, 0 none
 
     void setBannerText(String s) { bannerText = s; }
+    void setOnMapChange(BiConsumer<ForestMap, Boolean> f) { onMapChange = f; }
+
+    /** Index of the forest being looked at (0 = first ever). Earlier forests are always full. */
+    int viewIndex() { return view < 0 || view > maxView() ? garden.mapIndex : view; }
+
+    /** On: you can flip one forest past the current one and see it locked (preview of the next map). */
+    void setPreviewNext(boolean on) { preview = on; }
+    private int maxView() { return garden.mapIndex + (preview ? 1 : 0); }
+    /** True while looking at the next map, which stays locked until the current forest is full and a new map is started. */
+    boolean viewLocked() { return viewIndex() > garden.mapIndex; }
+    private ForestMap viewMap() { return Config.MAPS.get(viewIndex() % Config.MAPS.size()); }
+    private double viewKg() {
+        // earlier forests are full; the locked preview is drawn fully grown so you can see what you're working towards
+        return viewIndex() != garden.mapIndex ? Config.FOREST_CAPACITY_KG : Math.min(Config.FOREST_CAPACITY_KG, garden.mapKg());
+    }
+    private boolean viewFull() { return !viewLocked() && viewKg() >= Config.FOREST_CAPACITY_KG - 1e-9; }
+
+    /** Jump back to the forest you're currently growing. */
+    void showCurrent() { view = -1; changed(); }
+
+    private void step(int d) {
+        int n = Math.max(0, Math.min(maxView(), viewIndex() + d));
+        if (n == viewIndex()) return;
+        view = n == garden.mapIndex ? -1 : n;
+        changed();
+    }
+
+    private void changed() {
+        if (onMapChange != null) onMapChange.accept(viewMap(), viewIndex() == garden.mapIndex);
+        repaint();
+    }
 
     ForestCanvas(Garden garden) {
         this.garden = garden;
         shownMap = garden.mapIndex;
         new Timer(30, e -> {
-            if (garden.mapIndex != shownMap) { shownMap = garden.mapIndex; shown = 0; }   // new map: trees grow in from empty
-            double target = Math.min(Config.FOREST_CAPACITY_KG, garden.mapKg());
+            if (viewIndex() != shownMap) { shownMap = viewIndex(); shown = 0; }   // different forest: trees grow in from empty
+            double target = viewKg();
             shown = Math.abs(target - shown) < 0.005 ? target : shown + (target - shown) * 0.08;
-            double want = garden.forestFull() ? 1 : 0;
+            double want = viewFull() ? 1 : 0;
             banner = Math.abs(want - banner) < 0.005 ? want : banner + (want - banner) * 0.1;
+            double lockWant = viewLocked() ? 1 : 0;
+            lockAmt = Math.abs(lockWant - lockAmt) < 0.005 ? lockWant : lockAmt + (lockWant - lockAmt) * 0.15;
             if (isShowing()) repaint();
         }).start();
+
+        java.awt.event.MouseAdapter mouse = new java.awt.event.MouseAdapter() {
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                placeArrows();
+                if (prevBox.contains(e.getPoint())) step(-1);
+                else if (nextBox.contains(e.getPoint())) step(1);
+            }
+            public void mouseMoved(java.awt.event.MouseEvent e) {
+                placeArrows();
+                int h = prevBox.contains(e.getPoint()) ? -1 : nextBox.contains(e.getPoint()) ? 1 : 0;
+                boolean usable = h != 0 && (h < 0 ? viewIndex() > 0 : viewIndex() < maxView());
+                setCursor(Cursor.getPredefinedCursor(usable ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+                if (h != hover) { hover = h; repaint(); }
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) { if (hover != 0) { hover = 0; repaint(); } }
+        };
+        addMouseListener(mouse);
+        addMouseMotionListener(mouse);
+    }
+
+    /** Dim veil, a padlock and a progress bar toward unlocking, drawn over the previewed forest. */
+    private void lockOverlay(Graphics2D g, int w, int h, double cx) {
+        float a = (float) Math.min(1, lockAmt);
+        g.setComposite(AlphaComposite.SrcOver.derive(a));
+        Color dim = new Color(40, 55, 50, 125), clear = new Color(40, 55, 50, 0);
+        int fade = Math.min(90, h / 4);                                                  // feathered so the veil has no hard edge
+        g.setPaint(new GradientPaint(0, 0, clear, 0, fade, dim));
+        g.fillRect(0, 0, w, fade);
+        g.setColor(dim);
+        g.fillRect(0, fade, w, Math.max(0, h - 2 * fade));
+        g.setPaint(new GradientPaint(0, h - fade, dim, 0, h, clear));
+        g.fillRect(0, h - fade, w, fade);
+
+        double cy = h * 0.43;
+        g.setColor(new Color(40, 55, 50, 225));
+        g.fill(new Ellipse2D.Double(cx - 62, cy - 62, 124, 124));
+        g.setColor(Color.WHITE);
+        g.setStroke(new BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new Arc2D.Double(cx - 17, cy - 46, 34, 44, 0, 180, Arc2D.OPEN));         // shackle
+        g.draw(new Line2D.Double(cx - 17, cy - 24, cx - 17, cy - 10));
+        g.draw(new Line2D.Double(cx + 17, cy - 24, cx + 17, cy - 10));
+        g.fill(new RoundRectangle2D.Double(cx - 29, cy - 12, 58, 46, 12, 12));          // body
+        g.setColor(new Color(40, 55, 50));
+        g.fill(new Ellipse2D.Double(cx - 6, cy + 4, 12, 12));                           // keyhole
+        g.fill(new RoundRectangle2D.Double(cx - 2.5, cy + 10, 5, 14, 3, 3));
+
+        double bw = 240, bh = 12, by = cy + 84, frac = Math.min(1, garden.mapKg() / Config.FOREST_CAPACITY_KG);
+        g.setColor(new Color(255, 255, 255, 80));
+        g.fill(new RoundRectangle2D.Double(cx - bw / 2, by, bw, bh, bh, bh));
+        g.setColor(Color.WHITE);
+        if (frac > 0.01) g.fill(new RoundRectangle2D.Double(cx - bw / 2, by, Math.max(bh, bw * frac), bh, bh, bh));
+        g.setComposite(AlphaComposite.SrcOver);
+    }
+
+    /** Where the arrows sit (empty when there is only one forest). Used by both painting and clicks. */
+    private void placeArrows() {
+        if (maxView() > 0) {
+            int d = 50, y = (int) (getHeight() * 0.46 - d / 2.0);
+            prevBox.setBounds(14, y, d, d);
+            nextBox.setBounds(getWidth() - 14 - d, y, d, d);
+        } else {
+            prevBox.setBounds(0, 0, 0, 0);
+            nextBox.setBounds(0, 0, 0, 0);
+        }
+    }
+
+    /** Round arrow button at the left / right edge. Dimmed when there is nothing further that way. */
+    private void arrow(Graphics2D g, Rectangle box, int dir, boolean enabled, boolean hot) {
+        float a = enabled ? 1f : 0.35f;
+        g.setComposite(AlphaComposite.SrcOver.derive(a));
+        g.setColor(new Color(255, 255, 255, 235));
+        g.fill(new Ellipse2D.Double(box.x, box.y, box.width, box.height));
+        g.setColor(hot && enabled ? Ui.TEAL : Ui.INK);
+        g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        double cx = box.getCenterX(), cy = box.getCenterY(), s = box.width * 0.16;
+        g.draw(new Line2D.Double(cx - dir * s * 0.6, cy - s * 1.5, cx + dir * s * 0.9, cy));
+        g.draw(new Line2D.Double(cx + dir * s * 0.9, cy, cx - dir * s * 0.6, cy + s * 1.5));
+        g.setComposite(AlphaComposite.SrcOver);
     }
 
     protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0.create();
         Ui.aa(g);
-        ForestMap m = garden.map();
+        ForestMap m = viewMap();
         double t = System.nanoTime() / 1e9;
         int w = getWidth(), h = getHeight();
         double thick = 30;
@@ -624,6 +745,9 @@ class ForestCanvas extends JComponent {
             if (m.spooky()) pumpkin(g, c.getX() + tw * 0.2, c.getY() + th * 0.12, tw * 0.07 * (0.4 + 0.6 * tr[2]));
         }
 
+        if (m.snowy()) snowfall(g, w, h, t);
+        if (lockAmt > 0.01) lockOverlay(g, w, h, cx);
+
         // "forest saved" banner (slides in once the map is full)
         if (banner > 0.02) {
             String msg = bannerText;
@@ -639,17 +763,31 @@ class ForestCanvas extends JComponent {
         }
 
         // caption chip
+        boolean past = viewIndex() < garden.mapIndex;
         String cap = count == 0
             ? "This map is empty - start a journey to plant your first tree 🌱"
             : m.icon() + " " + m.name() + "  ·  " + full + (full == 1 ? " tree" : " trees") + (part > 0.01 ? " + 1 growing" : "")
-                + "  ·  " + String.format("%.1f kg CO₂ saved in total", garden.total());
-        g.setFont(Ui.font(Font.BOLD, 16));
+                + (past ? "  ·  complete ✓" : "  ·  " + String.format("%.1f kg CO₂ saved in total", garden.total()))
+                + (garden.mapIndex > 0 ? "  ·  Forest " + (viewIndex() + 1) + " of " + (garden.mapIndex + 1) : "");
+        if (viewLocked())
+            cap = "🔒 Next up: " + m.icon() + " " + m.name() + "  ·  " + (garden.forestFull() ? "press START NEW MAP to unlock"
+                : String.format("%.1f kg more CO₂ to unlock", Config.FOREST_CAPACITY_KG - garden.mapKg()));
+        float fs = 16f;
+        g.setFont(Ui.font(Font.BOLD, fs));
+        while (fs > 11f && g.getFontMetrics().stringWidth(cap) + 44 > w - 24) g.setFont(Ui.font(Font.BOLD, fs -= 1f));
         FontMetrics fm = g.getFontMetrics();
         int cw = fm.stringWidth(cap) + 44, ch = 40;
         g.setColor(new Color(255, 255, 255, 235));
         g.fillRoundRect((w - cw) / 2, h - ch - 22, cw, ch, ch, ch);
         g.setColor(Ui.INK);
         Ui.drawCentered(g, cap, cx, h - 22 - ch / 2.0 + (fm.getAscent() - fm.getDescent()) / 2.0);
+
+        // arrows to flip between forests (only once there is more than one)
+        placeArrows();
+        if (maxView() > 0) {
+            arrow(g, prevBox, -1, viewIndex() > 0, hover < 0);
+            arrow(g, nextBox, 1, viewIndex() < maxView(), hover > 0);
+        }
         g.dispose();
     }
 
@@ -667,8 +805,12 @@ class ForestCanvas extends JComponent {
 
     private void pine(Graphics2D g, double x, double y, double ht, double gr, double t, ForestMap m) {
         double H = ht * (0.25 + 0.75 * gr);
-        g.setColor(m.spooky() ? new Color(0, 0, 0, 55) : new Color(47, 107, 87, 55));
+        g.setColor(m.spooky() ? new Color(0, 0, 0, 55) : m.snowy() ? new Color(70, 95, 125, 60) : new Color(47, 107, 87, 55));
         g.fill(new Ellipse2D.Double(x - H * 0.28, y - H * 0.05, H * 0.56, H * 0.1));
+        if (m.snowy()) {                                                              // little snow drift around the trunk
+            g.setColor(Color.WHITE);
+            g.fill(new Ellipse2D.Double(x - H * 0.2, y - H * 0.055, H * 0.4, H * 0.085));
+        }
         double trunkW = H * 0.09, trunkH = H * 0.22;
         g.setColor(m.trunk());
         g.fill(new Rectangle2D.Double(x - trunkW / 2, y - trunkH, trunkW, trunkH));
@@ -678,6 +820,27 @@ class ForestCanvas extends JComponent {
             double sway = Math.sin(t * 1.5 + x * 0.01) * H * 0.015 * k;
             g.setColor(cols[k]);
             g.fill(poly(x - bw / 2, by, x + bw / 2, by, x + sway, by - hh));
+            if (m.snowy()) {                                                          // snow settled on the top of each tier
+                double f = 0.52, ax = x + sway, ay = by - hh;
+                double lx = ax + (x - bw / 2 - ax) * f, rx = ax + (x + bw / 2 - ax) * f, cy = ay + (by - ay) * f;
+                g.setColor(Color.WHITE);
+                g.fill(poly(ax, ay, rx, cy, ax + (rx - ax) * 0.45, cy - hh * 0.07, ax, cy + hh * 0.05,
+                    ax + (lx - ax) * 0.45, cy - hh * 0.07, lx, cy));
+            }
+        }
+    }
+
+    /* ---- Winter extras ---- */
+
+    /** Drifting snowflakes. Positions come from the flake number and the clock, so nothing needs storing. */
+    private static void snowfall(Graphics2D g, int w, int h, double t) {
+        for (int i = 0; i < 70; i++) {
+            double depth = 0.35 + 0.65 * ((i * 37) % 10) / 9.0;                   // far flakes are small, slow and faint
+            double speed = 22 + 40 * depth, size = 1.6 + 2.6 * depth;
+            double x = ((i * 0.6180339887) % 1.0) * w + Math.sin(t * 0.8 + i) * 14 * depth;
+            double y = (t * speed + i * 53.0) % (h + 20) - 10;
+            g.setColor(new Color(255, 255, 255, (int) (110 + 120 * depth)));
+            g.fill(new Ellipse2D.Double(x, y, size, size));
         }
     }
 
@@ -745,7 +908,7 @@ final class AppFrame extends JFrame {
     private int toastedMap = -1, dialogMap = -1;             // maps whose "forest full" message was already shown
 
     AppFrame() {
-        super("Coach CO₂ Tracker");
+        super("Travel Tree");
         root.add(loginPage, "login");                         // first card = what shows on launch
         root.add(timerPage, "timer");
         root.add(forestPage, "forest");
@@ -820,6 +983,7 @@ final class AppFrame extends JFrame {
     private String currentUser() { return user == null ? null : user.username(); }
 
     private void go(String page) {
+        if (page.equals("menu")) { sideMenu.open(); return; }
         if (page.equals("journey")) { chooseJourney(); return; }
         if (page.equals("logout")) { logout(); return; }
         if (page.equals("profile") || page.equals("friends")) {
@@ -848,7 +1012,7 @@ final class AppFrame extends JFrame {
             JOptionPane.showMessageDialog(this, "Finish your current journey first.");
             return;
         }
-        new JourneyDialog(this, j -> { journey = j; timerPage.setJourney(j); }).setVisible(true);
+        new JourneyDialog(this, j -> { journey = j; timerPage.setJourney(j); go("timer"); }).setVisible(true);
     }
 
     private void toggleJourney() {

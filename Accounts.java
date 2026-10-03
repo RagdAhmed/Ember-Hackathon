@@ -279,7 +279,7 @@ final class Accounts {
     private void write(Path file, Properties p) throws IOException {
         Files.createDirectories(dir);
         Path tmp = Files.createTempFile(dir, "save", ".tmp");
-        try (Writer w = Files.newBufferedWriter(tmp)) { p.store(w, "Coach CO2 profile"); }
+        try (Writer w = Files.newBufferedWriter(tmp)) { p.store(w, "Travel Tree profile"); }
         try {
             Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException e) {

@@ -7,13 +7,22 @@ final class ForestPage extends SkyPanel {
     private final Garden garden;
     private final JPanel claim = new JPanel();
     private final JLabel next = Ui.label(" ", 15, Font.BOLD, Ui.INK);
+    private final ForestCanvas canvas;
 
     ForestPage(Garden garden, Consumer<String> nav, Runnable onNewMap) {
         super(true);
         this.garden = garden;
         setLayout(new BorderLayout());
         add(Ui.topBar(null, nav), BorderLayout.NORTH);
-        add(new ForestCanvas(garden), BorderLayout.CENTER);
+        canvas = new ForestCanvas(garden);
+        canvas.setPreviewNext(true);               // flip one past the current forest to see the next map, locked
+        // flipping to another forest re-tints the page; the "start new map" button belongs to the current forest only
+        canvas.setOnMapChange((m, current) -> {
+            setTheme(m.skyTop(), m.skyBottom());
+            claim.setVisible(canvas.viewIndex() >= garden.mapIndex && garden.forestFull());   // current forest or the locked preview
+            revalidate();
+        });
+        add(canvas, BorderLayout.CENTER);
 
         // shown only when the forest is full: unlock the next map
         claim.setOpaque(false);
@@ -31,14 +40,11 @@ final class ForestPage extends SkyPanel {
 
     /** Call whenever the page is about to be shown or the map changes. */
     void refresh() {
-        ForestMap m = garden.map();
-        setTheme(m.skyTop(), m.skyBottom());
-        boolean full = garden.forestFull();
-        if (full) {
+        if (garden.forestFull()) {
             ForestMap n = garden.nextMapPreview();
             next.setText("Next up: " + n.icon() + " " + n.name());
         }
-        claim.setVisible(full);
+        canvas.showCurrent();                    // reopening the page always lands on the forest you're growing
         revalidate();
         repaint();
     }

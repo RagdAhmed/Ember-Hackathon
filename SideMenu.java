@@ -11,7 +11,7 @@ import javax.swing.*;
 final class SideMenu extends JComponent {
     private static final int W = 300, HEADER = 170, ROW = 56, FIRST_ROW = 192;
     private static final String[][] ITEMS = {
-        {"🚌", "Choose journey", "journey"}, {"🌲", "Forest", "forest"}, {"🏅", "Badges", "badges"},
+        {"🏠", "Home", "timer"}, {"🚌", "Choose journey", "journey"}, {"🌲", "Forest", "forest"}, {"🏅", "Badges", "badges"},
         {"👤", "My profile", "profile"}, {"👥", "Friends", "friends"}};
     private static final String[] LOGOUT = {"🚪", "Log out", "logout"};
 
@@ -131,7 +131,7 @@ final class SideMenu extends JComponent {
         g.setFont(Ui.font(Font.PLAIN, 40));
         g.drawString("🌳", x0 + 26, 62);
         g.setFont(Ui.display(Font.BOLD, 25));
-        g.drawString("Coach CO₂", x0 + 26, 100);
+        g.drawString("Travel Tree", x0 + 26, 100);
         g.setFont(Ui.font(Font.BOLD, 14));
         g.setColor(Ui.TEAL_DARK);
         g.drawString(userName == null ? "Guest - progress not saved" : "👤  " + userName, x0 + 26, 125);
