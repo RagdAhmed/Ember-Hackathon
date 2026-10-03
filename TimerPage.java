@@ -13,6 +13,7 @@ final class TimerPage extends SkyPanel {
     private final JLabel route = Ui.label(" ", 15, Font.PLAIN, Ui.MUTED);
     private final Bar bar = new Bar();
     private final Toast toast = new Toast();
+    private final JLabel userLabel = Ui.label(" ", 13, Font.BOLD, Ui.TEAL_DARK);
     private final PillButton button = new PillButton("SELECT JOURNEY", Ui.TEAL, 340);
 
     TimerPage(Garden garden, Journey j, Consumer<String> nav, Runnable onToggle) {
@@ -24,12 +25,18 @@ final class TimerPage extends SkyPanel {
         JPanel top = new JPanel(new BorderLayout());
         top.setOpaque(false);
         top.setBorder(BorderFactory.createEmptyBorder(16, 20, 4, 20));
-        top.add(new MenuButton(nav), BorderLayout.WEST);
+        JPanel menu = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));    // same width as the right side so the title stays centred
+        menu.setOpaque(false);
+        menu.setPreferredSize(new Dimension(150, 44));
+        menu.add(new MenuButton(nav));
+        top.add(menu, BorderLayout.WEST);
         JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
         title.setFont(Ui.font(Font.BOLD, 17));
         title.setForeground(Ui.MUTED);
         top.add(title, BorderLayout.CENTER);
-        top.add(Box.createRigidArea(new Dimension(56, 44)), BorderLayout.EAST);
+        userLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        userLabel.setPreferredSize(new Dimension(150, 44));
+        top.add(userLabel, BorderLayout.EAST);
         add(top, BorderLayout.NORTH);
 
         // single centred column, as in the sketch
@@ -76,6 +83,17 @@ final class TimerPage extends SkyPanel {
     void setRunning(boolean running) {
         button.setText(running ? "I'VE GOT OFF THE COACH" : journey == null ? "SELECT JOURNEY" : "START JOURNEY");
         button.setColor(running ? Ui.INK : Ui.TEAL);
+    }
+
+    /** Shown top-right; null means guest. */
+    void setUser(String name) { userLabel.setText(name == null ? "Guest" : "👤 " + name); }
+
+    /** Forget the selected journey (used on login/logout). */
+    void clearJourney() {
+        journey = null;
+        resetStats();
+        setRunning(false);
+        toast.clear();
     }
 
     /** Switch to a different (real) journey picked from the API. */

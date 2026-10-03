@@ -104,6 +104,14 @@ final class Garden {
 
     void bank() { bankedKg += liveKg; liveKg = 0; }
 
+    /** Replace everything with saved progress (badges are re-derived from the total). */
+    void load(double kg) {
+        bankedKg = kg;
+        liveKg = 0;
+        unlocked.clear();
+        checkUnlocks();
+    }
+
     List<Badge> checkUnlocks() {
         List<Badge> fresh = new ArrayList<>();
         for (Badge b : Config.BADGES) if (total() >= b.kg() && unlocked.add(b)) fresh.add(b);
@@ -235,7 +243,7 @@ class MenuButton extends JButton {
         JPopupMenu pm = new JPopupMenu();
         pm.setBackground(Color.WHITE);
         pm.setBorder(BorderFactory.createLineBorder(Ui.MIST, 1));
-        for (String[] item : new String[][]{{"🚌  Choose journey", "journey"}, {"🌲  Forest", "forest"}, {"🏅  Badges", "badges"}}) {
+        for (String[] item : new String[][]{{"🚌  Choose journey", "journey"}, {"🌲  Forest", "forest"}, {"🏅  Badges", "badges"}, {"🚪  Log out", "logout"}}) {
             JMenuItem mi = new JMenuItem(item[0]);
             mi.setFont(Ui.font(Font.PLAIN, 16));
             mi.setForeground(Ui.INK);
@@ -643,9 +651,14 @@ final class AppFrame extends JFrame {
     private final ForestPage forestPage = new ForestPage(garden, this::go);
     private final BadgesPage badgesPage = new BadgesPage(garden, this::go);
     private boolean running;
+    private final Accounts accounts = new Accounts();
+    private final LoginPage loginPage = new LoginPage(accounts, this::onLogin, this::onGuest);
+    private Accounts.Profile user;                            // null = guest (nothing is saved)
+    private int journeys;
 
     AppFrame() {
         super("Coach CO₂ Tracker");
+        root.add(loginPage, "login");                         // first card = what shows on launch
         root.add(timerPage, "timer");
         root.add(forestPage, "forest");
         root.add(badgesPage, "badges");
@@ -654,10 +667,63 @@ final class AppFrame extends JFrame {
         setMinimumSize(new Dimension(1000, 720));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                if (running) finishJourney();                 // don't lose a journey that's in progress
+            }
+        });
+    }
+
+    /* ---- accounts ---- */
+
+    private void onLogin(Accounts.Profile p) {
+        user = p;
+        journeys = p.journeys();
+        garden.load(p.bankedKg());
+        startSession(p.username());
+    }
+
+    private void onGuest() {
+        user = null;
+        journeys = 0;
+        garden.load(0);
+        startSession(null);
+    }
+
+    private void startSession(String name) {
+        journey = null;
+        timerPage.clearJourney();
+        timerPage.setUser(name);
+        badgesPage.refresh();
+        cards.show(root, "timer");
+    }
+
+    private void logout() {
+        if (running) {
+            JOptionPane.showMessageDialog(this, "Finish your current journey first.");
+            return;
+        }
+        user = null;
+        garden.load(0);
+        badgesPage.refresh();
+        loginPage.reset();
+        cards.show(root, "login");
+    }
+
+    private void saveProgress() {
+        if (user == null) return;
+        try {
+            user = new Accounts.Profile(user.username(), garden.bankedKg, journeys);
+            accounts.save(user);
+        } catch (java.io.IOException e) {
+            JOptionPane.showMessageDialog(this, "Couldn't save your progress: " + e.getMessage(),
+                "Save failed", JOptionPane.WARNING_MESSAGE);
+        }
     }
 
     private void go(String page) {
         if (page.equals("journey")) { chooseJourney(); return; }
+        if (page.equals("logout")) { logout(); return; }
         badgesPage.refresh();
         cards.show(root, page);
     }
@@ -679,13 +745,20 @@ final class AppFrame extends JFrame {
             timerPage.setRunning(true);
             tracker.start(journey, this::onSnapshot);
         } else {
-            Snapshot s = tracker.stop();                     // final stats (in-memory "save")
-            running = false;
-            garden.bank();
-            timerPage.setRunning(false);
-            timerPage.finish(s);
-            badgesPage.refresh();
+            timerPage.finish(finishJourney());
         }
+    }
+
+    /** Stop the coach, bank the CO2 into the garden and save it to the profile. */
+    private Snapshot finishJourney() {
+        Snapshot s = tracker.stop();
+        running = false;
+        garden.bank();
+        journeys++;
+        saveProgress();
+        timerPage.setRunning(false);
+        badgesPage.refresh();
+        return s;
     }
 
     private void onSnapshot(Snapshot s) {
