@@ -21,7 +21,9 @@ public class CoachCo2App {
 /* ===================== CONFIG ===================== */
 final class Config {
     static final double SAVED_KG_PER_KM = 0.248;   // coach vs car, kg CO2 saved per km
-    static final int DEMO_SECONDS = 30;            // real seconds the simulated journey takes
+    static final boolean REAL_TIME = false;        // false: replay a journey in DEMO_SECONDS; true: run it in real time
+    static final int DEMO_SECONDS = 30;            // real seconds the replayed journey takes (when REAL_TIME is false)
+    static final double ROAD_FACTOR = 1.15;        // road distance ~ straight-line distance x this (API gives no distance)
     static final double FULL_TREE_KG = 18.6;       // kg that makes one fully grown tree
     static final int FOREST_GRID = 4;              // forest plot is GRID x GRID tiles (max trees = GRID^2)
     static final double[] STAGE_KG = {0, 1, 5, 10, 16};
@@ -33,6 +35,8 @@ final class Config {
         new Badge("🌲", "Forest Builder", "25 kg CO₂ saved", 25),
         new Badge("🌍", "Planet Protector", "50 kg CO₂ saved", 50),
         new Badge("🏆", "Forest Guardian", "100 kg CO₂ saved", 100));
+
+    static int journeySeconds(Journey j) { return REAL_TIME ? j.durationMin() * 60 : DEMO_SECONDS; }
 
     static double savedKg(double km) { return km * SAVED_KG_PER_KM; }
 
@@ -68,7 +72,7 @@ final class MockJourneyTracker implements JourneyTracker {
         last = snap(0);
         listener.accept(last);
         timer = new Timer(100, e -> {
-            double p = Math.min(1, (System.currentTimeMillis() - startMs) / (Config.DEMO_SECONDS * 1000.0));
+            double p = Math.min(1, (System.currentTimeMillis() - startMs) / (Config.journeySeconds(journey) * 1000.0));
             last = snap(p);
             listener.accept(last);
             if (p >= 1) timer.stop();
@@ -228,7 +232,7 @@ class MenuButton extends JButton {
         JPopupMenu pm = new JPopupMenu();
         pm.setBackground(Color.WHITE);
         pm.setBorder(BorderFactory.createLineBorder(Ui.MIST, 1));
-        for (String[] item : new String[][]{{"🌲  Forest", "forest"}, {"🏅  Badges", "badges"}}) {
+        for (String[] item : new String[][]{{"🚌  Choose journey", "journey"}, {"🌲  Forest", "forest"}, {"🏅  Badges", "badges"}}) {
             JMenuItem mi = new JMenuItem(item[0]);
             mi.setFont(Ui.font(Font.PLAIN, 16));
             mi.setForeground(Ui.INK);
@@ -267,7 +271,8 @@ class PillButton extends JButton {
         int w = getWidth(), h = getHeight() - 6;
         g.setColor(new Color(0, 0, 0, 28));
         g.fillRoundRect(2, 5, w - 4, h, h, h);
-        Color fill = getModel().isPressed() ? c.darker() : getModel().isRollover() ? mix(c, Color.WHITE, 0.12) : c;
+        Color fill = !isEnabled() ? mix(c, Color.WHITE, 0.55) : getModel().isPressed() ? c.darker()
+            : getModel().isRollover() ? mix(c, Color.WHITE, 0.12) : c;
         g.setColor(fill);
         g.fillRoundRect(0, 0, w, h, h, h);
         g.setFont(getFont());
@@ -628,7 +633,7 @@ final class AppFrame extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final JourneyTracker tracker = new MockJourneyTracker();   // <- swap for real API implementation
-    private final Journey journey = new Journey("Edinburgh", "Glasgow", 75, 60);
+    private Journey journey = new Journey("Edinburgh", "Glasgow", 75, 60);   // default until the user picks a real one
     private final Garden garden = new Garden();
     private final TimerPage timerPage = new TimerPage(garden, journey, this::go, this::toggleJourney);
     private final ForestPage forestPage = new ForestPage(garden, this::go);
@@ -648,8 +653,17 @@ final class AppFrame extends JFrame {
     }
 
     private void go(String page) {
+        if (page.equals("journey")) { chooseJourney(); return; }
         badgesPage.refresh();
         cards.show(root, page);
+    }
+
+    private void chooseJourney() {
+        if (running) {
+            JOptionPane.showMessageDialog(this, "Finish your current journey first.");
+            return;
+        }
+        new JourneyDialog(this, j -> { journey = j; timerPage.setJourney(j); }).setVisible(true);
     }
 
     private void toggleJourney() {
