@@ -552,6 +552,9 @@ class ForestCanvas extends JComponent {
     private final Garden garden;
     private double shown, banner;
     private int shownMap;
+    private String bannerText = "🎉  Congrats! You saved the forest!";
+
+    void setBannerText(String s) { bannerText = s; }
 
     ForestCanvas(Garden garden) {
         this.garden = garden;
@@ -623,7 +626,7 @@ class ForestCanvas extends JComponent {
 
         // "forest saved" banner (slides in once the map is full)
         if (banner > 0.02) {
-            String msg = "🎉  Congrats! You saved the forest!";
+            String msg = bannerText;
             g.setFont(Ui.display(Font.BOLD, 26));
             FontMetrics bf = g.getFontMetrics();
             int bw = bf.stringWidth(msg) + 60, bh = 48, by = (int) (14 - 20 * (1 - banner));
@@ -736,6 +739,8 @@ final class AppFrame extends JFrame {
     private final Accounts accounts = new Accounts();
     private final LoginPage loginPage = new LoginPage(accounts, this::onLogin, this::onGuest);
     private Accounts.Profile user;                            // null = guest (nothing is saved)
+    private final ProfilePage profilePage = new ProfilePage(accounts, this::go, this::currentUser);
+    private final FriendsPage friendsPage = new FriendsPage(accounts, this::go, this::currentUser, this::viewProfile);
     private int journeys;
     private int toastedMap = -1, dialogMap = -1;             // maps whose "forest full" message was already shown
 
@@ -745,6 +750,8 @@ final class AppFrame extends JFrame {
         root.add(timerPage, "timer");
         root.add(forestPage, "forest");
         root.add(badgesPage, "badges");
+        root.add(profilePage, "profile");
+        root.add(friendsPage, "friends");
         setContentPane(root);
         setGlassPane(sideMenu);                               // the slide-in menu lives on the glass pane
         setSize(1200, 780);
@@ -793,6 +800,7 @@ final class AppFrame extends JFrame {
         user = null;
         garden.load(0, 0);
         badgesPage.refresh();
+        friendsPage.reset();
         loginPage.reset();
         cards.show(root, "login");
     }
@@ -808,12 +816,31 @@ final class AppFrame extends JFrame {
         }
     }
 
+    /** Username of whoever is logged in, or null for a guest. */
+    private String currentUser() { return user == null ? null : user.username(); }
+
     private void go(String page) {
         if (page.equals("journey")) { chooseJourney(); return; }
         if (page.equals("logout")) { logout(); return; }
+        if (page.equals("profile") || page.equals("friends")) {
+            if (user == null) {
+                JOptionPane.showMessageDialog(this, "Log in or sign up to use your profile and friends.");
+                return;
+            }
+            if (page.equals("profile")) profilePage.show(user.username(), "timer");
+            else friendsPage.refresh();
+            cards.show(root, page);
+            return;
+        }
         badgesPage.refresh();
         forestPage.refresh();
         cards.show(root, page);
+    }
+
+    /** Open another user's profile + forest (reached from the Friends page). */
+    private void viewProfile(String username) {
+        profilePage.show(username, "friends");
+        cards.show(root, "profile");
     }
 
     private void chooseJourney() {

@@ -1,12 +1,10 @@
 import java.awt.*;
-import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.Timer;
 
 /** Pop-up wrapper (opened from the menu) around the journey picker. */
 final class JourneyDialog extends JDialog {
@@ -149,7 +147,7 @@ final class JourneyPicker extends SkyPanel {
 
     private void status(String s) { status.setText(s); }
 
-    private static void debounce(JTextField f, Runnable action) {
+    static void debounce(JTextField f, Runnable action) {
         Timer t = new Timer(350, e -> action.run());
         t.setRepeats(false);
         f.getDocument().addDocumentListener(new DocumentListener() {
@@ -159,7 +157,7 @@ final class JourneyPicker extends SkyPanel {
         });
     }
 
-    private static JTextField field(String hint) {
+    static JTextField field(String hint) {
         JTextField f = new JTextField() {                      // Swing has no placeholder, so draw the hint ourselves
             protected void paintComponent(Graphics g0) {
                 super.paintComponent(g0);
@@ -181,7 +179,7 @@ final class JourneyPicker extends SkyPanel {
         return f;
     }
 
-    private static <T> JList<T> styled(JList<T> l) {
+    static <T> JList<T> styled(JList<T> l) {
         l.setFont(Ui.font(Font.PLAIN, 15));
         l.setForeground(Ui.INK);
         l.setSelectionBackground(Ui.SOFT);
@@ -192,7 +190,7 @@ final class JourneyPicker extends SkyPanel {
         return l;
     }
 
-    private static JPanel column(String heading, JTextField search, JList<?> list) {
+    static JPanel column(String heading, JTextField search, JList<?> list) {
         JPanel p = new JPanel(new BorderLayout(0, 8));
         p.setOpaque(false);
         JLabel h = new JLabel(heading);

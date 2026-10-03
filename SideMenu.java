@@ -3,7 +3,6 @@ import java.awt.event.*;
 import java.awt.geom.*;
 import java.util.function.Consumer;
 import javax.swing.*;
-import javax.swing.Timer;
 
 /**
  * Slide-in navigation drawer. Install it as the frame's glass pane (setGlassPane) and call open().
@@ -12,7 +11,8 @@ import javax.swing.Timer;
 final class SideMenu extends JComponent {
     private static final int W = 300, HEADER = 170, ROW = 56, FIRST_ROW = 192;
     private static final String[][] ITEMS = {
-        {"🚌", "Choose journey", "journey"}, {"🌲", "Forest", "forest"}, {"🏅", "Badges", "badges"}};
+        {"🚌", "Choose journey", "journey"}, {"🌲", "Forest", "forest"}, {"🏅", "Badges", "badges"},
+        {"👤", "My profile", "profile"}, {"👥", "Friends", "friends"}};
     private static final String[] LOGOUT = {"🚪", "Log out", "logout"};
 
     private final Garden garden;
