@@ -2,6 +2,7 @@ import java.awt.*;
 import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.*;
+import javax.swing.Timer;
 
 /** Page 3 of the sketch (shown first): menu, tree in a circle, 00:00 timer, START JOURNEY. */
 final class TimerPage extends SkyPanel {
@@ -12,7 +13,7 @@ final class TimerPage extends SkyPanel {
     private final JLabel route = Ui.label(" ", 15, Font.PLAIN, Ui.MUTED);
     private final Bar bar = new Bar();
     private final Toast toast = new Toast();
-    private final PillButton button = new PillButton("START JOURNEY", Ui.TEAL, 340);
+    private final PillButton button = new PillButton("SELECT JOURNEY", Ui.TEAL, 340);
 
     TimerPage(Garden garden, Journey j, Consumer<String> nav, Runnable onToggle) {
         this.journey = j;
@@ -24,8 +25,8 @@ final class TimerPage extends SkyPanel {
         top.setOpaque(false);
         top.setBorder(BorderFactory.createEmptyBorder(16, 20, 4, 20));
         top.add(new MenuButton(nav), BorderLayout.WEST);
-        JLabel title = new JLabel("Travel Tree", SwingConstants.CENTER);
-        title.setFont(Ui.font(Font.BOLD, 30));
+        JLabel title = new JLabel("Coach CO₂ Tracker", SwingConstants.CENTER);
+        title.setFont(Ui.font(Font.BOLD, 17));
         title.setForeground(Ui.MUTED);
         top.add(title, BorderLayout.CENTER);
         top.add(Box.createRigidArea(new Dimension(56, 44)), BorderLayout.EAST);
@@ -41,7 +42,7 @@ final class TimerPage extends SkyPanel {
         col.add(Ui.gap(2));
         col.add(timer);
         col.add(Ui.gap(2));
-        col.add(route);
+        col.add(Ui.fixed(route, 460, 22));
         col.add(Ui.gap(10));
         col.add(bar);
         col.add(Ui.gap(22));
@@ -56,10 +57,12 @@ final class TimerPage extends SkyPanel {
         add(center, BorderLayout.CENTER);
 
         resetStats();
+        setRunning(false);
         new Timer(100, e -> stage.setText(Config.stage(tree.currentTreeKg()))).start();
     }
 
     private String idleRoute() {
+        if (journey == null) return "No journey selected yet";
         return journey.from() + " → " + journey.to() + "  ·  " + (int) journey.distanceKm() + " km  ·  ≈ "
             + journey.durationMin() + " min";
     }
@@ -71,7 +74,7 @@ final class TimerPage extends SkyPanel {
     }
 
     void setRunning(boolean running) {
-        button.setText(running ? "I'VE GOT OFF THE COACH" : "START JOURNEY");
+        button.setText(running ? "I'VE GOT OFF THE COACH" : journey == null ? "SELECT JOURNEY" : "START JOURNEY");
         button.setColor(running ? Ui.INK : Ui.TEAL);
     }
 
@@ -79,6 +82,7 @@ final class TimerPage extends SkyPanel {
     void setJourney(Journey j) {
         journey = j;
         resetStats();
+        setRunning(false);
         toast.clear();
         toast.show("🚌 Journey set: " + j.from() + " → " + j.to());
     }

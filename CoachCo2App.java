@@ -1,4 +1,6 @@
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.*;
 import java.util.*;
 import java.util.List;
@@ -20,9 +22,11 @@ public class CoachCo2App {
 
 /* ===================== CONFIG ===================== */
 final class Config {
-    static final double SAVED_KG_PER_KM = 0.248;   // coach vs car, kg CO2 saved per km
+    static final double CAR_G_PER_MILE = 278;      // average car tailpipe CO2, grams per mile
+    static final double COACH_G_PER_MILE = 0;      // electric coach: zero tailpipe emissions
+    static final double KM_PER_MILE = 1.609344;
     static final boolean REAL_TIME = false;        // false: replay a journey in DEMO_SECONDS; true: run it in real time
-    static final int DEMO_SECONDS = 35;            // real seconds the replayed journey takes (when REAL_TIME is false)
+    static final int DEMO_SECONDS = 30;            // real seconds the replayed journey takes (when REAL_TIME is false)
     static final double ROAD_FACTOR = 1.15;        // road distance ~ straight-line distance x this (API gives no distance)
     static final double FULL_TREE_KG = 18.6;       // kg that makes one fully grown tree
     static final int FOREST_GRID = 4;              // forest plot is GRID x GRID tiles (max trees = GRID^2)
@@ -38,7 +42,8 @@ final class Config {
 
     static int journeySeconds(Journey j) { return REAL_TIME ? j.durationMin() * 60 : DEMO_SECONDS; }
 
-    static double savedKg(double km) { return km * SAVED_KG_PER_KM; }
+    /** CO2 saved (kg) by taking the electric coach instead of driving the same distance. */
+    static double savedKg(double km) { return (km / KM_PER_MILE) * (CAR_G_PER_MILE - COACH_G_PER_MILE) / 1000.0; }
 
     static String stage(double kg) {
         for (int i = STAGE_KG.length - 1; i >= 0; i--) if (kg >= STAGE_KG[i]) return STAGE_NAME[i];
@@ -633,7 +638,7 @@ final class AppFrame extends JFrame {
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
     private final JourneyTracker tracker = new MockJourneyTracker();   // <- swap for real API implementation
-    private Journey journey = new Journey("Edinburgh", "Glasgow", 75, 60);   // default until the user picks a real one
+    private Journey journey;                                  // null until the user picks one
     private final Garden garden = new Garden();
     private final TimerPage timerPage = new TimerPage(garden, journey, this::go, this::toggleJourney);
     private final ForestPage forestPage = new ForestPage(garden, this::go);
@@ -641,7 +646,7 @@ final class AppFrame extends JFrame {
     private boolean running;
 
     AppFrame() {
-        super("Travel Tree");
+        super("Coach CO₂ Tracker");
         root.add(timerPage, "timer");
         root.add(forestPage, "forest");
         root.add(badgesPage, "badges");
@@ -667,6 +672,7 @@ final class AppFrame extends JFrame {
     }
 
     private void toggleJourney() {
+        if (!running && journey == null) { chooseJourney(); return; }   // nothing picked yet: the button says SELECT JOURNEY
         if (!running) {
             garden.liveKg = 0;
             running = true;
