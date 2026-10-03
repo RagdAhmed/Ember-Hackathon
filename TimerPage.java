@@ -111,9 +111,15 @@ final class TimerPage extends SkyPanel {
         toast.show("✅ Journey started: " + j.from() + " → " + j.to());
     }
 
+    /** Journey over: report the savings and go back to "no journey selected" (button says SELECT JOURNEY). */
     void finish(Snapshot s) {
+        journey = null;
+        resetStats();
+        setRunning(false);
         toast.show(String.format("🌳 Saved %.1f kg CO₂ - added to your forest", s.co2Kg()));
     }
+
+    void notice(String msg) { toast.show(msg); }
 
     void update(Snapshot s, List<Badge> newBadges) {
         timer.setText(String.format("%02d:%02d", s.elapsedSec() / 60, s.elapsedSec() % 60));

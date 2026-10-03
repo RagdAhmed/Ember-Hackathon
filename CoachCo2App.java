@@ -30,6 +30,14 @@ final class Config {
     static final int FOREST_GRID = 4;              // forest plot is GRID x GRID tiles (max trees = GRID^2)
     static final double[] STAGE_KG = {0, 1, 5, 10, 16};
     static final String[] STAGE_NAME = {"Seed", "Sprout", "Young tree", "Mature tree", "Large tree"};
+    static final double FOREST_CAPACITY_KG = FOREST_GRID * FOREST_GRID * FULL_TREE_KG;   // kg that fills one whole map
+    /** Maps are played in order and loop. Add another ForestMap here to add a map. */
+    static final List<ForestMap> MAPS = List.of(
+        new ForestMap("Meadow Forest", "🌲", Ui.PALE, new Color(0xEEF5F2), Ui.SOFT, new Color(0x97BDAF),
+            Ui.SOIL_L, Ui.SOIL_R, Ui.TRUNK, new Color[]{Ui.TEAL_DARK, Ui.TEAL_MID, Ui.TEAL}, Ui.INK, Ui.TEAL_DARK, false),
+        new ForestMap("Halloween Forest", "🎃", new Color(0xFFDDB8), new Color(0xCDB6E6), new Color(0x6E5A8E), new Color(0x604E80),
+            new Color(0x4A3340), new Color(0x372531), new Color(0x2E2230),
+            new Color[]{new Color(0x2A1F3D), new Color(0x3F2D5C), new Color(0x5A3F7D)}, new Color(0x2A1F3D), new Color(0xD9680F), true));
     static final List<Badge> BADGES = List.of(
         new Badge("🌱", "First Sprout", "First CO₂ saved", 0.01),
         new Badge("🌿", "Growing Green", "10 kg CO₂ saved", 10),
@@ -52,6 +60,9 @@ final class Config {
 /* ===================== DATA / TRACKING LAYER ===================== */
 record Journey(String from, String to, double distanceKm, int durationMin) {}
 record Badge(String icon, String name, String desc, double kg) {}
+/** Look of one forest map (colours + whether it gets the spooky extras). */
+record ForestMap(String name, String icon, Color skyTop, Color skyBottom, Color grassA, Color grassB,
+                 Color soilL, Color soilR, Color trunk, Color[] foliage, Color outline, Color accent, boolean spooky) {}
 record Snapshot(double progress, double distanceKm, double totalKm, double co2Kg, int elapsedSec) {
     double remainingKm() { return Math.max(0, totalKm - distanceKm); }
 }
@@ -104,10 +115,20 @@ final class Garden {
 
     void bank() { bankedKg += liveKg; liveKg = 0; }
 
+    /** Which map the forest is on. Each map takes FOREST_CAPACITY_KG; kg beyond that carries over to the next map. */
+    int mapIndex;
+
+    ForestMap map() { return Config.MAPS.get(mapIndex % Config.MAPS.size()); }
+    ForestMap nextMapPreview() { return Config.MAPS.get((mapIndex + 1) % Config.MAPS.size()); }
+    double mapKg() { return Math.max(0, total() - mapIndex * Config.FOREST_CAPACITY_KG); }
+    boolean forestFull() { return mapKg() >= Config.FOREST_CAPACITY_KG - 1e-9; }
+    void nextMap() { if (forestFull()) mapIndex++; }
+
     /** Replace everything with saved progress (badges are re-derived from the total). */
-    void load(double kg) {
+    void load(double kg, int map) {
         bankedKg = kg;
         liveKg = 0;
+        mapIndex = Math.max(0, Math.min(map, (int) (kg / Config.FOREST_CAPACITY_KG)));   // can't be on a map you haven't filled the last one for
         unlocked.clear();
         checkUnlocks();
     }
@@ -203,12 +224,13 @@ final class Ui {
 
 /** Page background: white fading to a pale palette tint (or a fuller tint for the forest). */
 class SkyPanel extends JPanel {
-    private final Color top, bottom;
+    private Color top, bottom;
     SkyPanel() { this(false); }
     SkyPanel(boolean tinted) {
         top = tinted ? Ui.PALE : Color.WHITE;
         bottom = tinted ? new Color(0xEEF5F2) : new Color(0xE9F1EE);
     }
+    void setTheme(Color top, Color bottom) { this.top = top; this.bottom = bottom; repaint(); }
     protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0;
         g.setPaint(new GradientPaint(0, 0, top, 0, getHeight(), bottom));
@@ -523,47 +545,60 @@ class TreeCanvas extends JComponent {
 /* ===================== ISOMETRIC FOREST (forest page) ===================== */
 class ForestCanvas extends JComponent {
     private static final int N = Config.FOREST_GRID;
+    private static final int BANNER = 56;      // room reserved for the "forest saved" banner
     // order the tiles get planted in (spreads trees out from the middle)
     private static final int[][] SLOTS = {{1, 1}, {2, 2}, {1, 2}, {2, 1}, {0, 1}, {3, 2}, {2, 3}, {1, 0},
         {3, 1}, {0, 2}, {2, 0}, {1, 3}, {3, 3}, {0, 0}, {3, 0}, {0, 3}};
     private final Garden garden;
-    private double shown;
+    private double shown, banner;
+    private int shownMap;
 
     ForestCanvas(Garden garden) {
         this.garden = garden;
-        new Timer(30, e -> { shown += (garden.total() - shown) * 0.08; if (isShowing()) repaint(); }).start();
+        shownMap = garden.mapIndex;
+        new Timer(30, e -> {
+            if (garden.mapIndex != shownMap) { shownMap = garden.mapIndex; shown = 0; }   // new map: trees grow in from empty
+            double target = Math.min(Config.FOREST_CAPACITY_KG, garden.mapKg());
+            shown = Math.abs(target - shown) < 0.005 ? target : shown + (target - shown) * 0.08;
+            double want = garden.forestFull() ? 1 : 0;
+            banner = Math.abs(want - banner) < 0.005 ? want : banner + (want - banner) * 0.1;
+            if (isShowing()) repaint();
+        }).start();
     }
 
     protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0.create();
         Ui.aa(g);
+        ForestMap m = garden.map();
         double t = System.nanoTime() / 1e9;
         int w = getWidth(), h = getHeight();
         double thick = 30;
-        double tw = Math.min(w * 0.72 / N, (h * 0.80 - thick) / (N / 2.0 + 0.45));   // tile width
+        double tw = Math.min(w * 0.72 / N, (h * 0.80 - thick - BANNER * banner) / (N / 2.0 + 0.45));   // tile width
         double th = tw / 2, cx = w / 2.0;
-        double top = (h - (N * th + thick + tw * 0.4)) / 2 + tw * 0.4 - 18;
+        double top = (h - (N * th + thick + tw * 0.4)) / 2 + tw * 0.4 - 18 + BANNER * 0.5 * banner;
+
+        if (m.spooky()) night(g, w, h, t);
 
         // slab sides
         Point2D l = p(cx, top, tw, th, 0, N), b = p(cx, top, tw, th, N, N), r = p(cx, top, tw, th, N, 0);
         g.setColor(new Color(75, 92, 86, 30));                                    // ground shadow
         g.fill(poly(l.getX() + 10, l.getY() + thick + 6, b.getX(), b.getY() + thick + 16,
             r.getX() - 10, r.getY() + thick + 6, b.getX(), b.getY() + thick - 4));
-        g.setColor(Ui.SOIL_L);
+        g.setColor(m.soilL());
         g.fill(poly(l.getX(), l.getY(), b.getX(), b.getY(), b.getX(), b.getY() + thick, l.getX(), l.getY() + thick));
-        g.setColor(Ui.SOIL_R);
+        g.setColor(m.soilR());
         g.fill(poly(r.getX(), r.getY(), b.getX(), b.getY(), b.getX(), b.getY() + thick, r.getX(), r.getY() + thick));
 
-        // checkered grass top (palette greens)
+        // checkered grass top
         for (int i = 0; i < N; i++)
             for (int j = 0; j < N; j++) {
                 Point2D a = p(cx, top, tw, th, i, j), bb = p(cx, top, tw, th, i + 1, j),
                     c = p(cx, top, tw, th, i + 1, j + 1), d = p(cx, top, tw, th, i, j + 1);
-                g.setColor(((i + j) & 1) == 0 ? Ui.SOFT : new Color(0x97BDAF));
+                g.setColor(((i + j) & 1) == 0 ? m.grassA() : m.grassB());
                 g.fill(poly(a.getX(), a.getY(), bb.getX(), bb.getY(), c.getX(), c.getY(), d.getX(), d.getY()));
             }
         g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(Ui.INK);
+        g.setColor(m.outline());
         Point2D tp = p(cx, top, tw, th, 0, 0);
         g.draw(poly(tp.getX(), tp.getY(), r.getX(), r.getY(), b.getX(), b.getY(), l.getX(), l.getY()));
         g.draw(new Line2D.Double(l.getX(), l.getY(), l.getX(), l.getY() + thick));
@@ -573,21 +608,37 @@ class ForestCanvas extends JComponent {
         g.draw(new Line2D.Double(b.getX(), b.getY() + thick, r.getX(), r.getY() + thick));
 
         // trees (back to front)
-        int full = (int) (shown / Config.FULL_TREE_KG);
-        double part = (shown % Config.FULL_TREE_KG) / Config.FULL_TREE_KG;
+        int full = (int) Math.floor(shown / Config.FULL_TREE_KG + 1e-9);
+        double part = Math.max(0, shown / Config.FULL_TREE_KG - full);
+        if (full >= N * N) { full = N * N; part = 0; }
         int count = Math.min(N * N, full + (part > 0.01 ? 1 : 0));
         List<double[]> trees = new ArrayList<>();
         for (int k = 0; k < count; k++) trees.add(new double[]{SLOTS[k][0], SLOTS[k][1], k < full ? 1 : part});
         trees.sort(Comparator.comparingDouble((double[] a) -> a[0] + a[1]).thenComparingDouble(a -> a[0]));
         for (double[] tr : trees) {
             Point2D c = p(cx, top, tw, th, tr[0] + 0.5, tr[1] + 0.5);
-            pine(g, c.getX(), c.getY(), tw * 0.78, tr[2], t);
+            pine(g, c.getX(), c.getY(), tw * 0.78, tr[2], t, m);
+            if (m.spooky()) pumpkin(g, c.getX() + tw * 0.2, c.getY() + th * 0.12, tw * 0.07 * (0.4 + 0.6 * tr[2]));
+        }
+
+        // "forest saved" banner (slides in once the map is full)
+        if (banner > 0.02) {
+            String msg = "🎉  Congrats! You saved the forest!";
+            g.setFont(Ui.display(Font.BOLD, 26));
+            FontMetrics bf = g.getFontMetrics();
+            int bw = bf.stringWidth(msg) + 60, bh = 48, by = (int) (14 - 20 * (1 - banner));
+            g.setComposite(AlphaComposite.SrcOver.derive((float) Math.min(1, banner)));
+            g.setColor(m.accent());
+            g.fillRoundRect((w - bw) / 2, by, bw, bh, bh, bh);
+            g.setColor(Color.WHITE);
+            Ui.drawCentered(g, msg, cx, by + bh / 2.0 + (bf.getAscent() - bf.getDescent()) / 2.0);
+            g.setComposite(AlphaComposite.SrcOver);
         }
 
         // caption chip
         String cap = count == 0
-            ? "Your forest is empty - start a journey to plant your first tree 🌱"
-            : full + (full == 1 ? " tree" : " trees") + (part > 0.01 ? " + 1 growing" : "")
+            ? "This map is empty - start a journey to plant your first tree 🌱"
+            : m.icon() + " " + m.name() + "  ·  " + full + (full == 1 ? " tree" : " trees") + (part > 0.01 ? " + 1 growing" : "")
                 + "  ·  " + String.format("%.1f kg CO₂ saved in total", garden.total());
         g.setFont(Ui.font(Font.BOLD, 16));
         FontMetrics fm = g.getFontMetrics();
@@ -611,20 +662,62 @@ class ForestCanvas extends JComponent {
         return path;
     }
 
-    private void pine(Graphics2D g, double x, double y, double ht, double gr, double t) {
+    private void pine(Graphics2D g, double x, double y, double ht, double gr, double t, ForestMap m) {
         double H = ht * (0.25 + 0.75 * gr);
-        g.setColor(new Color(47, 107, 87, 55));
+        g.setColor(m.spooky() ? new Color(0, 0, 0, 55) : new Color(47, 107, 87, 55));
         g.fill(new Ellipse2D.Double(x - H * 0.28, y - H * 0.05, H * 0.56, H * 0.1));
         double trunkW = H * 0.09, trunkH = H * 0.22;
-        g.setColor(Ui.TRUNK);
+        g.setColor(m.trunk());
         g.fill(new Rectangle2D.Double(x - trunkW / 2, y - trunkH, trunkW, trunkH));
-        Color[] cols = {Ui.TEAL_DARK, Ui.TEAL_MID, Ui.TEAL};
+        Color[] cols = m.foliage();
         for (int k = 0; k < 3; k++) {
             double by = y - trunkH * 0.6 - k * H * 0.24, bw = H * 0.55 * (1 - k * 0.22), hh = H * 0.42;
             double sway = Math.sin(t * 1.5 + x * 0.01) * H * 0.015 * k;
             g.setColor(cols[k]);
             g.fill(poly(x - bw / 2, by, x + bw / 2, by, x + sway, by - hh));
         }
+    }
+
+    /* ---- Halloween extras ---- */
+
+    private static void night(Graphics2D g, int w, int h, double t) {
+        double mr = Math.min(w, h) * 0.07, mx = w * 0.82, my = h * 0.17;
+        for (int i = 3; i >= 1; i--) {                                              // soft glow
+            g.setColor(new Color(255, 241, 201, 22));
+            g.fill(new Ellipse2D.Double(mx - mr - i * 14, my - mr - i * 14, 2 * (mr + i * 14), 2 * (mr + i * 14)));
+        }
+        g.setColor(new Color(0xFFF4D6));
+        g.fill(new Ellipse2D.Double(mx - mr, my - mr, 2 * mr, 2 * mr));
+        g.setColor(new Color(0xF2DDB0));
+        g.fill(new Ellipse2D.Double(mx - mr * 0.5, my - mr * 0.4, mr * 0.35, mr * 0.35));
+        g.fill(new Ellipse2D.Double(mx + mr * 0.15, my + mr * 0.2, mr * 0.45, mr * 0.45));
+        bat(g, w * 0.20 + Math.sin(t * 0.5) * 24, h * 0.22 + Math.cos(t * 0.8) * 10, 16, t);
+        bat(g, w * 0.34 + Math.sin(t * 0.4 + 2) * 18, h * 0.12 + Math.cos(t * 0.7) * 8, 11, t + 1);
+        bat(g, w * 0.68 + Math.sin(t * 0.45 + 4) * 22, h * 0.32 + Math.cos(t * 0.6) * 9, 13, t + 2);
+    }
+
+    private static void bat(Graphics2D g, double x, double y, double s, double t) {
+        double f = Math.sin(t * 6 + x) * 0.35;                                       // wing flap
+        Path2D p = new Path2D.Double();
+        p.moveTo(x, y - s * 0.15);
+        p.curveTo(x - s * 0.35, y - s * (0.55 + f), x - s * 0.8, y - s * (0.35 + f), x - s, y + s * 0.15);
+        p.quadTo(x - s * 0.7, y + s * 0.05, x - s * 0.5, y + s * 0.3);
+        p.quadTo(x - s * 0.25, y + s * 0.1, x, y + s * 0.35);
+        p.quadTo(x + s * 0.25, y + s * 0.1, x + s * 0.5, y + s * 0.3);
+        p.quadTo(x + s * 0.7, y + s * 0.05, x + s, y + s * 0.15);
+        p.curveTo(x + s * 0.8, y - s * (0.35 + f), x + s * 0.35, y - s * (0.55 + f), x, y - s * 0.15);
+        p.closePath();
+        g.setColor(new Color(0x2A1F3D));
+        g.fill(p);
+    }
+
+    private static void pumpkin(Graphics2D g, double x, double y, double r) {
+        g.setColor(new Color(0xD96A0B));
+        g.fill(new Ellipse2D.Double(x - r * 1.1, y - r * 0.8, r * 2.2, r * 1.6));
+        g.setColor(new Color(0xF58A1F));
+        g.fill(new Ellipse2D.Double(x - r * 0.65, y - r * 0.85, r * 1.3, r * 1.7));
+        g.setColor(new Color(0x3F5A2A));
+        g.fill(new Rectangle2D.Double(x - r * 0.12, y - r * 1.05, r * 0.24, r * 0.35));
     }
 }
 
@@ -637,13 +730,14 @@ final class AppFrame extends JFrame {
     private final Garden garden = new Garden();
     private final SideMenu sideMenu = new SideMenu(garden, this::go);
     private final TimerPage timerPage = new TimerPage(garden, journey, sideMenu::open, this::toggleJourney);
-    private final ForestPage forestPage = new ForestPage(garden, this::go);
+    private final ForestPage forestPage = new ForestPage(garden, this::go, this::startNextMap);
     private final BadgesPage badgesPage = new BadgesPage(garden, this::go);
     private boolean running;
     private final Accounts accounts = new Accounts();
     private final LoginPage loginPage = new LoginPage(accounts, this::onLogin, this::onGuest);
     private Accounts.Profile user;                            // null = guest (nothing is saved)
     private int journeys;
+    private int toastedMap = -1, dialogMap = -1;             // maps whose "forest full" message was already shown
 
     AppFrame() {
         super("Coach CO₂ Tracker");
@@ -669,14 +763,14 @@ final class AppFrame extends JFrame {
     private void onLogin(Accounts.Profile p) {
         user = p;
         journeys = p.journeys();
-        garden.load(p.bankedKg());
+        garden.load(p.bankedKg(), p.mapIndex());
         startSession(p.username());
     }
 
     private void onGuest() {
         user = null;
         journeys = 0;
-        garden.load(0);
+        garden.load(0, 0);
         startSession(null);
     }
 
@@ -685,6 +779,8 @@ final class AppFrame extends JFrame {
         timerPage.clearJourney();
         timerPage.setUser(name);
         sideMenu.setUser(name);
+        forestPage.refresh();
+        toastedMap = dialogMap = garden.forestFull() ? garden.mapIndex : -1;   // no pop-ups for a forest that was already full
         badgesPage.refresh();
         cards.show(root, "timer");
     }
@@ -695,7 +791,7 @@ final class AppFrame extends JFrame {
             return;
         }
         user = null;
-        garden.load(0);
+        garden.load(0, 0);
         badgesPage.refresh();
         loginPage.reset();
         cards.show(root, "login");
@@ -704,7 +800,7 @@ final class AppFrame extends JFrame {
     private void saveProgress() {
         if (user == null) return;
         try {
-            user = new Accounts.Profile(user.username(), garden.bankedKg, journeys);
+            user = new Accounts.Profile(user.username(), garden.bankedKg, journeys, garden.mapIndex);
             accounts.save(user);
         } catch (java.io.IOException e) {
             JOptionPane.showMessageDialog(this, "Couldn't save your progress: " + e.getMessage(),
@@ -716,6 +812,7 @@ final class AppFrame extends JFrame {
         if (page.equals("journey")) { chooseJourney(); return; }
         if (page.equals("logout")) { logout(); return; }
         badgesPage.refresh();
+        forestPage.refresh();
         cards.show(root, page);
     }
 
@@ -736,8 +833,31 @@ final class AppFrame extends JFrame {
             timerPage.setRunning(true);
             tracker.start(journey, this::onSnapshot);
         } else {
-            timerPage.finish(finishJourney());
+            Snapshot s = finishJourney();
+            journey = null;                                  // back to "select journey" for next time
+            timerPage.finish(s);
+            if (garden.forestFull() && dialogMap != garden.mapIndex) {
+                dialogMap = garden.mapIndex;
+                SwingUtilities.invokeLater(this::celebrate);
+            }
         }
+    }
+
+    private void celebrate() {
+        ForestMap next = garden.nextMapPreview();
+        int pick = JOptionPane.showOptionDialog(this,
+            "🎉  Congratulations! You saved the forest!\n\nYour " + garden.map().name()
+                + " is full - every tile has a fully grown tree.\nA new map is waiting for you: " + next.icon() + " " + next.name() + ".",
+            "Forest saved!", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
+            new String[]{"See my forest", "Later"}, "See my forest");
+        if (pick == 0) go("forest");
+    }
+
+    /** Called from the Forest page's START NEW MAP button. */
+    private void startNextMap() {
+        garden.nextMap();
+        saveProgress();
+        forestPage.refresh();
     }
 
     /** Stop the coach, bank the CO2 into the garden and save it to the profile. */
@@ -755,6 +875,10 @@ final class AppFrame extends JFrame {
     private void onSnapshot(Snapshot s) {
         garden.liveKg = s.co2Kg();
         timerPage.update(s, garden.checkUnlocks());
+        if (garden.forestFull() && toastedMap != garden.mapIndex) {
+            toastedMap = garden.mapIndex;
+            timerPage.notice("🎉 Your forest is full! Open the Forest for a new map");
+        }
         badgesPage.refresh();
     }
 }

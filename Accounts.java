@@ -22,7 +22,7 @@ final class Accounts {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** What gets saved on a profile. */
-    record Profile(String username, double bankedKg, int journeys) {}
+    record Profile(String username, double bankedKg, int journeys, int mapIndex) {}
 
     /** Problem the user can fix (bad password, name taken...). The message is safe to show. */
     static final class AuthException extends Exception {
@@ -58,8 +58,9 @@ final class Accounts {
             p.setProperty("hash", b64(hash(password, salt, ITERATIONS)));
             p.setProperty("bankedKg", "0");
             p.setProperty("journeys", "0");
+            p.setProperty("map", "0");
             write(file, p);
-            return new Profile(username, 0, 0);
+            return new Profile(username, 0, 0, 0);
         } catch (IOException e) {
             throw new AuthException("Couldn't save your account on this computer (" + e.getMessage() + ").");
         } finally {
@@ -83,7 +84,8 @@ final class Accounts {
             if (!MessageDigest.isEqual(want, hash(password, salt, iters))) throw bad;
             return new Profile(p.getProperty("username", username),
                 Math.max(0, Double.parseDouble(p.getProperty("bankedKg", "0"))),
-                Math.max(0, Integer.parseInt(p.getProperty("journeys", "0"))));
+                Math.max(0, Integer.parseInt(p.getProperty("journeys", "0"))),
+                Math.max(0, Integer.parseInt(p.getProperty("map", "0"))));
         } catch (IOException | RuntimeException e) {
             if (e instanceof AuthException) throw (AuthException) e;
             throw new AuthException("Couldn't read that account's file - it may be damaged.");
@@ -98,6 +100,7 @@ final class Accounts {
         Properties p = read(file);
         p.setProperty("bankedKg", String.valueOf(profile.bankedKg()));
         p.setProperty("journeys", String.valueOf(profile.journeys()));
+        p.setProperty("map", String.valueOf(profile.mapIndex()));
         write(file, p);
     }
 
